@@ -80,6 +80,7 @@ name = "clarify"
 version = "0.1.0"
 dependencies = [
  "llama_cpp_rs",
+ "syn",
 ]
 
 [[package]]

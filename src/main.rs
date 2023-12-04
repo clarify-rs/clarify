@@ -1,5 +1,8 @@
+use std::fs::File;
+use std::io::Read;
 use std::thread::available_parallelism;
 
+use syn::spanned::Spanned;
 use llama_cpp_rs::{
     options::{ModelOptions, PredictOptions},
     LLama,
@@ -20,38 +23,34 @@ fn main() {
 
     let llama = LLama::new(model_path, &model_options).unwrap();
 
-    let predict_options = PredictOptions {
-        tokens: 0,
-        threads: num_threads,
-        top_k: 90,
-        top_p: 0.86,
-        token_callback: Some(Box::new(|token| {
-            print!("{}", token);
+    // TODO: Don't hardwire this
+    let mut file = File::open("./src/main.rs").expect("Unable to open file");
+    let mut src = String::new();
+    file.read_to_string(&mut src).expect("Unable to read file");
+    let syntax = syn::parse_file(&src).unwrap();
 
-            true
-        })),
-        ..Default::default()
-    };
+    for item in syntax.items {
+      match item {
+        syn::Item::Fn(i) => {
+          let predict_options = PredictOptions {
+              tokens: 0,
+              threads: num_threads,
+              top_k: 90,
+              top_p: 0.86,
+              token_callback: Some(Box::new(|token| {
+                  print!("{}", token);
 
-    let out = llama
-        .predict(
-            r#"
+                  true
+              })),
+              ..Default::default()
+          };
+          let out = llama
+              .predict(
+                  format!(r#"
 Consider the following rust function:
 
 ```rs
-pub async fn run(bytecode: Vec<i64>, http_config: Option<HttpType>) -> VMResult<()> {
-  let program = Program::load(bytecode, http_config);
-  PROGRAM
-    .set(program)
-    .map_err(|_| VMError::Other("A program is already loaded".to_string()))?;
-  let mut vm = VM::new()?;
-  const START: EventEmit = EventEmit {
-    id: BuiltInEvents::START as i64,
-    payload: None,
-  };
-  vm.add(START)?;
-  vm.run().await
-}
+{}
 ```
 
 There is no rustdoc comment above the function describing its purpose.
@@ -60,9 +59,14 @@ This is not good for future developers who encounter this function in the future
 
 ```rs
 
-"#.into(),
-            predict_options,
-        )
-        .unwrap();
-    println!("output: {}", out);
+      "#, i.span().source_text().unwrap().replace("```", "\\`\\`\\`")),
+                  predict_options,
+              )
+              .unwrap();
+          println!("output: {}", out);
+          //println!("fn: {}", i.span().source_text().unwrap());
+        },
+        _ => (),
+      }
+    }
 }
