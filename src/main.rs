@@ -35,8 +35,6 @@ fn main() {
           let predict_options = PredictOptions {
               tokens: 0,
               threads: num_threads,
-              top_k: 90,
-              top_p: 0.86,
               token_callback: Some(Box::new(|token| {
                   print!("{}", token);
 
