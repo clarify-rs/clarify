@@ -24,6 +24,7 @@ enum Commands {
     Init { url: Option<String> },
     Check,
     Suggest,
+    Clean,
 }
 
 fn init(url: Option<String>, dest: OsString) {
@@ -50,6 +51,10 @@ fn init(url: Option<String>, dest: OsString) {
             eprintln!("Failed to fetch {}:\n\n{:#?}", url, error);
         }
     };
+}
+
+fn clean(dest: OsString) {
+    let _ = std::fs::remove_file(&dest).expect(&*format!("Unable to delete {:#?}", dest));
 }
 
 fn check() {
@@ -123,5 +128,6 @@ fn main() {
         Commands::Init { url } => init(url, model_path),
         Commands::Check => check(),
         Commands::Suggest => suggest(model_path),
+        Commands::Clean => clean(model_path),
     }
 }
