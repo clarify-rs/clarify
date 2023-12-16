@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::fs::File;
+use std::fs::{read_dir, File};
 use std::io::Read;
 use std::thread::available_parallelism;
 
@@ -23,7 +23,7 @@ struct Cli {
 enum Commands {
     Init { url: Option<String> },
     Check,
-    Suggest,
+    Suggest { path: Option<String> },
     Clean,
 }
 
@@ -61,7 +61,32 @@ fn check() {
     println!("TODO: Check with clarify (look for code lacking documentation and report it, also look for code that appears to have out-of-date documentation)");
 }
 
-fn suggest(model_path: OsString) {
+fn get_files_rec(path: OsString) -> Vec<OsString> {
+    let mut out = vec![];
+    match read_dir(path) {
+        Err(_) => return out, // TODO: Is there any better solution for this?
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Err(_) => return out, // TODO: How can a single entry be an error in the first
+                                          // place?
+                    Ok(entry) => {
+                        if entry.path().is_dir() {
+                            if !entry.path().into_os_string().into_string().expect("the unexpected").ends_with("target") {
+                                out.extend(get_files_rec(entry.path().into_os_string()));
+                            }
+                        } else if entry.path().into_os_string().into_string().expect("the unexpected").ends_with(".rs") {
+                            out.push(entry.path().into_os_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return out;
+}
+
+fn suggest(path: Option<String>, model_path: OsString) {
     println!("TODO: Do this more correctly (it's what the code below is starting to do, generate documentation comments for existing code)");
     let num_threads: i32 = available_parallelism().unwrap().get() as i32;
     let model_path = match std::env::var("GGUF") {
@@ -79,38 +104,34 @@ fn suggest(model_path: OsString) {
 
     let llama = LLama::new(model_path, &model_options).unwrap();
 
-    // TODO: Don't hardwire this
-    let mut file = File::open("./src/main.rs").expect("Unable to open file");
-    let mut src = String::new();
-    file.read_to_string(&mut src).expect("Unable to read file");
-    let syntax = syn::parse_file(&src).unwrap();
+    let files = get_files_rec(path.unwrap_or(".".to_string()).into());
+    for filename in files {
+        let mut file = File::open(filename).expect("Unable to open file");
+        let mut src = String::new();
+        file.read_to_string(&mut src).expect("Unable to read file");
+        let syntax = syn::parse_file(&src).unwrap();
 
-    for item in syntax.items {
-        match item {
-            syn::Item::Fn(i) => {
-                let predict_options = PredictOptions {
-                    tokens: 0,
-                    threads: num_threads,
-                    token_callback: Some(Box::new(|token| {
-                        print!("{}", token);
-
-                        true
-                    })),
-                    ..Default::default()
-                };
-                let out = llama
-                    .predict(
-                        format!(
-                            include_str!("./prompts/rs.txt"),
-                            i.span().source_text().unwrap().replace("```", "\\`\\`\\`")
-                        ),
-                        predict_options,
-                    )
-                    .unwrap();
-                println!("output: {}", out);
-                //println!("fn: {}", i.span().source_text().unwrap());
+        for item in syntax.items {
+            match item {
+                syn::Item::Fn(i) => {
+                    let predict_options = PredictOptions {
+                        tokens: 0,
+                        threads: num_threads,
+                        ..Default::default()
+                    };
+                    let out = llama
+                        .predict(
+                            format!(
+                                include_str!("./prompts/rs.txt"),
+                                i.span().source_text().unwrap().replace("```", "\\`\\`\\`")
+                            ),
+                            predict_options,
+                        )
+                        .unwrap();
+                    println!("{}", out);
+                }
+                _ => (),
             }
-            _ => (),
         }
     }
 }
@@ -127,7 +148,7 @@ fn main() {
     match cli.command {
         Commands::Init { url } => init(url, model_path),
         Commands::Check => check(),
-        Commands::Suggest => suggest(model_path),
+        Commands::Suggest { path } => suggest(path, model_path),
         Commands::Clean => clean(model_path),
     }
 }
