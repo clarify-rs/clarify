@@ -1,0 +1,16 @@
+Consider the following rust function:
+
+```rs
+{}
+```
+
+We can see that the rustdoc comment currently is:
+
+```
+{}
+```
+
+A good rustdoc function comment includes a description, arguments, an example usage, so we update the comment like so:
+
+```rs
+

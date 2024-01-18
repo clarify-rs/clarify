@@ -6,7 +6,7 @@ Consider the following rust function:
 
 There is no rustdoc comment above the function describing its purpose.
 
-This is not good for future developers who encounter this function in the future. So, after reading the code to understand what it is doing, we add the rustdoc comment, and the full function with annotations is as follows:
+This is not good for future developers who encounter this function in the future. So, after reading the code to understand what it is doing, we write the following rustdoc comment, including description, arguments, and example usage:
 
 ```rs
 

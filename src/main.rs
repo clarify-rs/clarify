@@ -87,7 +87,6 @@ fn get_files_rec(path: OsString) -> Vec<OsString> {
 }
 
 fn suggest(path: Option<String>, model_path: OsString) {
-    println!("TODO: Do this more correctly (it's what the code below is starting to do, generate documentation comments for existing code)");
     let num_threads: i32 = available_parallelism().unwrap().get() as i32;
     let model_path = match std::env::var("GGUF") {
         Ok(v) => v,
@@ -99,6 +98,7 @@ fn suggest(path: Option<String>, model_path: OsString) {
     let model_options = ModelOptions {
         n_gpu_layers: 43,
         numa: true,
+        context_size: 1024,
         ..Default::default()
     };
 
@@ -119,23 +119,68 @@ fn suggest(path: Option<String>, model_path: OsString) {
                         threads: num_threads,
                         ..Default::default()
                     };
+                    let docs = if i.attrs.len() > 0 {
+                      let docs: Vec<&syn::Attribute> = i.attrs.iter().filter(|attr| {
+                        if let syn::Meta::NameValue(nv) = &attr.meta {
+                          if let Some(ident) = nv.path.get_ident() {
+                            if ident.to_string() == "doc" {
+                              return true;
+                            }
+                          }
+                        }
+                        return false;
+                      }).collect();
+                      if docs.len() > 0 {
+                        Some(docs)
+                      } else {
+                        None
+                      }
+                    } else {
+                      None
+                    };
                     let out = llama
                         .predict(
-                            format!(
-                                include_str!("./prompts/rs.txt"),
-                                i.span().source_text().unwrap().replace("```", "\\`\\`\\`")
-                            ),
+                            match docs {
+                              Some(docs) => {
+                                format!(
+                                    include_str!("./prompts/rs_with_comments.txt"),
+                                    i.span().source_text().unwrap().replace("```", "\\`\\`\\`").replace("\n", "\\n"),
+                                    docs.iter().map(|attr| {
+                                      if let syn::Meta::NameValue(nv) = &attr.meta {
+                                        if let syn::Expr::Lit(lit) = &nv.value {
+                                          if let syn::Lit::Str(s) = &lit.lit {
+                                            s.value()
+                                          } else {
+                                            "".to_string()
+                                          }
+                                        } else {
+                                          "".to_string()
+                                        }
+                                      } else {
+                                        "".to_string()
+                                      }
+                                    }).collect::<Vec<String>>().join("\n")
+                                )
+                              }
+                              None => {
+                                format!(
+                                    include_str!("./prompts/rs.txt"),
+                                    i.span().source_text().unwrap().replace("```", "\\`\\`\\`").replace("\n", "\\n")
+                                )
+                              }
+                            },
                             predict_options,
                         )
                         .unwrap();
                     println!("{}", out);
                 }
-                _ => (),
+                _ => {}
             }
         }
     }
 }
 
+/// This is a rustdoc comment!
 fn main() {
     let model_path = match data_dir() {
         Some(mut data_path) => {
